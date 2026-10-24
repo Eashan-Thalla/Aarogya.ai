@@ -22,11 +22,48 @@ const MOCK_USER = {
   }
 };
 
-const MOCK_USER_LOCATION = {
-  lat: 17.4125,
-  lng: 78.4682,
-  name: 'Current Location (Begumpet, Hyderabad)'
+const MAP_API_CONFIG = {
+  geoapifyKey: localStorage.getItem('aarogya_geoapify_key') || '6d87e02422f2487295844bb55c4ac443',
+  mapboxToken: localStorage.getItem('aarogya_mapbox_token') || '',
+  activeProvider: localStorage.getItem('aarogya_map_provider') || 'geoapify',
+  activeStyle: localStorage.getItem('aarogya_map_style') || 'osm-bright-smooth'
 };
+
+const LOCATION_PRESETS = {
+  begumpet: {
+    lat: 17.4125,
+    lng: 78.4682,
+    name: 'Begumpet, Hyderabad (Center)'
+  },
+  jubilee_hills: {
+    lat: 17.4325,
+    lng: 78.4072,
+    name: 'Jubilee Hills, Hyderabad (West)'
+  },
+  hitec_city: {
+    lat: 17.4474,
+    lng: 78.3762,
+    name: 'Hitec City / Madhapur (Tech Hub)'
+  },
+  secunderabad: {
+    lat: 17.4399,
+    lng: 78.5015,
+    name: 'Secunderabad Junction (North-East)'
+  },
+  charminar: {
+    lat: 17.3616,
+    lng: 78.4747,
+    name: 'Charminar / Old City (South)'
+  },
+  kukatpally: {
+    lat: 17.4947,
+    lng: 78.3996,
+    name: 'Kukatpally Housing Board (North-West)'
+  }
+};
+
+let ACTIVE_USER_LOCATION = { ...LOCATION_PRESETS.begumpet };
+const MOCK_USER_LOCATION = ACTIVE_USER_LOCATION;
 
 const MOCK_HOSPITALS = [
   {

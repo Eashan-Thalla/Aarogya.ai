@@ -694,31 +694,75 @@
             <span class="badge badge-green" id="hospitalResultCount">8 facilities found</span>
           </div>
 
-          <!-- Interactive Hyderabad Geographic Map (Leaflet API) -->
+          <!-- Interactive Hyderabad Geographic Map (Location-Based API) -->
           <div class="map-card-wrapper">
             <div class="map-toolbar-header">
               <div class="map-title-hub">
                 <span class="pulse-dot"></span>
-                <span class="map-title-text">Interactive Map: Hyderabad Healthcare & Hospital Network</span>
+                <span class="map-title-text">Location-Based Healthcare Network</span>
                 <span class="badge badge-green" id="mapVisibleBadge" style="font-size: 11px;">8 facilities</span>
+                <span class="badge badge-gray" id="mapApiBadge" style="font-size: 10.5px; cursor: pointer;" onclick="openMapConfigModal()" title="Click to view/change Map API Key">
+                  🔑 API Key: Active
+                </span>
               </div>
               <div class="map-quick-actions">
                 <button type="button" class="map-action-pill active" id="pillAllHospitals" onclick="setMapTierFilter('all', this)">All</button>
-                <button type="button" class="map-action-pill" id="pillGovtHospitals" onclick="setMapTierFilter('Government', this)">Government</button>
+                <button type="button" class="map-action-pill" id="pillGovtHospitals" onclick="setMapTierFilter('Government', this)">Govt</button>
                 <button type="button" class="map-action-pill" id="pillPvtHospitals" onclick="setMapTierFilter('Private', this)">Private</button>
                 <button type="button" class="map-action-pill" id="pillAffordableHospitals" onclick="setMapTierFilter('affordable', this)">Affordable (&lt;₹5k)</button>
-                <button type="button" class="map-action-pill pill-locate" onclick="locateUserOnMap()" title="Pan to User Location">
+
+                <!-- Location Selector Dropdown & Live GPS -->
+                <div class="location-select-wrap">
+                  <select id="userLocationPresetSelect" class="location-mini-select" onchange="changeUserLocationPreset(this.value)" title="Change location to recalculate nearest hospital distances">
+                    <option value="begumpet">📍 Begumpet (Center)</option>
+                    <option value="jubilee_hills">📍 Jubilee Hills (West)</option>
+                    <option value="hitec_city">📍 Hitec City (Cyberabad)</option>
+                    <option value="secunderabad">📍 Secunderabad (North-East)</option>
+                    <option value="charminar">📍 Charminar (Old City)</option>
+                    <option value="kukatpally">📍 Kukatpally (North-West)</option>
+                  </select>
+                </div>
+
+                <button type="button" class="map-action-pill pill-locate" onclick="detectLiveDeviceLocation()" title="Use device GPS to locate me and recalculate nearest hospitals">
                   <svg style="width: 13px; height: 13px; vertical-align: -2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  My Location
+                  Detect GPS
+                </button>
+
+                <button type="button" class="map-action-pill pill-api-key" onclick="openMapConfigModal()" title="View or configure Map API Key & Tile Provider">
+                  🔑 API Key
                 </button>
                 <button type="button" class="map-action-pill" onclick="resetHospitalMapView()" title="Reset Map View">⟲ Fit All</button>
               </div>
             </div>
+
+            <!-- Proximity & Distance Calculation HUD -->
+            <div class="map-proximity-hud" id="mapProximityHud">
+              <div class="hud-left">
+                <span class="hud-label">Your Current Location:</span>
+                <strong id="activeLocationLabel" class="hud-val">Begumpet, Hyderabad (17.4125°N, 78.4682°E)</strong>
+              </div>
+              <div class="hud-right">
+                <span class="hud-label">Proximity Range:</span>
+                <select id="proximityRadiusSelect" class="radius-mini-select" onchange="setProximityRadius(this.value)" title="Highlight hospitals within radius">
+                  <option value="5">Within 5 km</option>
+                  <option value="10" selected>Within 10 km</option>
+                  <option value="15">Within 15 km</option>
+                  <option value="all">Show All</option>
+                </select>
+                <span class="badge badge-green" id="nearestHospBadge">Closest: Gandhi Hospital (3.2 km)</span>
+              </div>
+            </div>
+
             <div id="hyderabadHospitalMap" class="leaflet-hospital-map-container"></div>
             <div class="map-legend-dock">
               <div class="legend-chip"><span class="legend-color-dot dot-affordable"></span> Government / Affordable (&lt;₹5,000)</div>
               <div class="legend-chip"><span class="legend-color-dot dot-private"></span> Private / Multi-Specialty</div>
-              <div class="legend-chip"><span class="legend-color-dot dot-user"></span> Your Location (Begumpet)</div>
+              <div class="legend-chip"><span class="legend-color-dot dot-user"></span> Your Active Location (Live Radar)</div>
+              <div class="legend-chip" style="margin-left: auto;">
+                <span id="mapEngineStatusText" style="font-size: 11px; color: var(--text-muted); cursor: pointer;" onclick="openMapConfigModal()">
+                  Map API: <strong style="color: var(--green-700);">Geoapify Vector API Key Connected</strong>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1733,6 +1777,71 @@
       </div>
       <div id="schemeModalBody">
         <!-- Injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Map API Configuration Modal -->
+  <div id="mapConfigModal" class="modal-overlay">
+    <div class="modal" style="max-width: 520px;">
+      <div class="modal-header">
+        <h3 style="font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <svg style="width: 20px; height: 20px; color: var(--green-600);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          Map API Key & Provider Settings
+        </h3>
+        <button class="modal-close" onclick="closeModal('mapConfigModal')">
+          <svg style="width: 18px; height: 18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div style="padding: 20px;">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+          Configure your Map API Key for location-based hospital mapping, high-definition tiles, and real-time proximity calculation.
+        </p>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label" for="mapProviderSelect">Map Tile Provider</label>
+          <select id="mapProviderSelect" class="form-select" onchange="handleMapProviderChange()">
+            <option value="geoapify">Geoapify Maps API (Default with Active Key)</option>
+            <option value="mapbox">Mapbox GL Tiles (Custom Access Token)</option>
+            <option value="osm">Carto Voyager / OpenStreetMap (Public CDN Fallback)</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label" for="mapApiKeyInput">
+            Map API Key / Access Token
+            <span id="apiKeyStatusBadge" class="badge badge-green" style="font-size: 10px; margin-left: 8px;">Active &amp; Verified</span>
+          </label>
+          <input type="text" id="mapApiKeyInput" class="form-input" placeholder="Enter API Key (e.g. 6d87e02422f2487295844bb55c4ac443)">
+          <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">
+            Active key: <code>6d87e02422f2487295844bb55c4ac443</code> (Geoapify Free Tier). You can paste your own anytime.
+          </span>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label class="form-label" for="mapStyleSelect">Map Aesthetic Theme</label>
+          <select id="mapStyleSelect" class="form-select">
+            <option value="osm-bright-smooth">Geoapify Bright Smooth (Clean Healthcare)</option>
+            <option value="osm-carto">Geoapify OSM Carto (Detailed Streets)</option>
+            <option value="positron">Positron Minimalist Gray</option>
+            <option value="dark-matter">Dark Matter (Night Vision)</option>
+          </select>
+        </div>
+
+        <div style="background: var(--green-50); border: 1px solid var(--green-200); border-radius: var(--radius-md); padding: 12px; margin-bottom: 20px; font-size: 12px; color: var(--green-900);">
+          <strong>⚡ Location-Based Proximity:</strong> All hospital distances, ETA estimates, and route calculations update dynamically based on your detected GPS position.
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('mapConfigModal')">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveMapApiConfiguration()">Save &amp; Apply API Key</button>
+        </div>
       </div>
     </div>
   </div>

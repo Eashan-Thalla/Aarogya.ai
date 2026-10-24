@@ -643,17 +643,76 @@ function getHospitalDirections(name, location) {
   window.open(`https://www.google.com/maps/dir/?api=1&destination=${query}`, '_blank');
 }
 
-// ── Leaflet Geospatial Interactive Map for Hyderabad Healthcare ─────────────
+// ── Haversine Formula for Accurate Location-Based Distance (in km) ──────────
+function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's mean radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return parseFloat((R * c).toFixed(1));
+}
+
+// ── Leaflet Geospatial Interactive Map & API Key Engine ──────────────────────
 let leafletHospitalMap = null;
 let leafletMarkersGroup = null;
 let leafletUserMarker = null;
+let leafletProximityCircle = null;
+let leafletTileLayer = null;
 let hospitalMarkersById = {};
+let activeProximityRadiusKm = 10;
+
+function createTileLayer(provider, apiKey, style) {
+  let url = '';
+  let attribution = '';
+
+  if (provider === 'geoapify' && apiKey) {
+    const isRetina = (typeof L !== 'undefined' && L.Browser && L.Browser.retina);
+    url = isRetina
+      ? `https://maps.geoapify.com/v1/tile/${style}/{z}/{x}/{y}@2x.png?apiKey=${apiKey}`
+      : `https://maps.geoapify.com/v1/tile/${style}/{z}/{x}/{y}.png?apiKey=${apiKey}`;
+    attribution = '© <a href="https://www.geoapify.com/" target="_blank">Geoapify</a> | © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+  } else if (provider === 'mapbox' && apiKey) {
+    url = `https://api.mapbox.com/styles/v1/mapbox/${style}/tiles/{z}/{x}/{y}?access_token=${apiKey}`;
+    attribution = '© <a href="https://www.mapbox.com/">Mapbox</a> | © OpenStreetMap';
+  } else {
+    // High-performance public CDN fallback (Carto Voyager)
+    url = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    attribution = '© <a href="https://carto.com/">CARTO</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  }
+
+  const layer = L.tileLayer(url, {
+    maxZoom: 19,
+    subdomains: 'abcd',
+    attribution: attribution
+  });
+
+  // Gracefully fallback to Carto tiles if custom API key experiences a 401/403 or network error
+  layer.on('tileerror', function() {
+    if (provider !== 'osm' && !layer._hasFallenBack) {
+      layer._hasFallenBack = true;
+      console.warn('Map API key tile request error. Falling back to Carto Voyager tiles.');
+      if (leafletHospitalMap && leafletHospitalMap.hasLayer(layer)) {
+        leafletHospitalMap.removeLayer(layer);
+        const fallback = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19,
+          subdomains: 'abcd'
+        });
+        fallback.addTo(leafletHospitalMap);
+        leafletTileLayer = fallback;
+      }
+    }
+  });
+
+  return layer;
+}
 
 function renderHospitalMap() {
   const mapElement = document.getElementById('hyderabadHospitalMap');
   if (!mapElement) return;
 
-  // Check if Leaflet is loaded
   if (typeof L === 'undefined') {
     mapElement.innerHTML = `
       <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary);">
@@ -664,10 +723,11 @@ function renderHospitalMap() {
     return;
   }
 
-  // Initialize map if not yet created
+  // Initial calculation of location-based distances
+  recalculateHospitalDistances(ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng, false);
+
   if (!leafletHospitalMap) {
-    // Center of Hyderabad metro healthcare cluster
-    const defaultCenter = [17.4250, 78.4680];
+    const defaultCenter = [ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng];
     const defaultZoom = 12;
 
     leafletHospitalMap = L.map('hyderabadHospitalMap', {
@@ -676,52 +736,284 @@ function renderHospitalMap() {
       attributionControl: false
     }).setView(defaultCenter, defaultZoom);
 
-    // Modern, crisp tile layer (Carto Voyager clean tiles for healthcare data)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      subdomains: 'abcd'
-    }).addTo(leafletHospitalMap);
+    // Load active API Key tile layer
+    leafletTileLayer = createTileLayer(
+      MAP_API_CONFIG.activeProvider,
+      MAP_API_CONFIG.geoapifyKey,
+      MAP_API_CONFIG.activeStyle
+    );
+    leafletTileLayer.addTo(leafletHospitalMap);
 
-    // Initialize layer group for markers
+    // Layer group for hospital markers
     leafletMarkersGroup = L.layerGroup().addTo(leafletHospitalMap);
 
-    // Add user simulated GPS location marker
-    if (typeof MOCK_USER_LOCATION !== 'undefined') {
-      const userIcon = L.divIcon({
-        className: 'user-gps-div-icon',
-        html: `
-          <div class="user-gps-marker" title="${MOCK_USER_LOCATION.name}">
-            <div class="user-gps-pulse"></div>
-            <div class="user-gps-dot"></div>
-          </div>
-        `,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11]
-      });
+    // Proximity range circle
+    updateProximityRadiusCircle(ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng);
 
-      leafletUserMarker = L.marker([MOCK_USER_LOCATION.lat, MOCK_USER_LOCATION.lng], { icon: userIcon })
-        .addTo(leafletHospitalMap)
-        .bindPopup(`
-          <div style="padding: 10px 14px; font-size: 12px;">
-            <strong style="color: #2563eb; display: block; margin-bottom: 4px;">📍 Your Location</strong>
-            <span style="color: var(--text-secondary);">${MOCK_USER_LOCATION.name}</span>
-          </div>
-        `);
-    }
+    // User GPS location pin
+    updateUserMapMarker(ACTIVE_USER_LOCATION);
 
-    // Expose map globally for tab invalidation
     window.leafletHospitalMap = leafletHospitalMap;
   }
 
-  // Invalidate size in next animation frame to ensure correct tile rendering inside tabs
   setTimeout(() => {
     if (leafletHospitalMap) {
       leafletHospitalMap.invalidateSize();
     }
   }, 120);
 
-  // Render hospital markers
   updateHospitalMapPins(MOCK_HOSPITALS);
+}
+
+function updateUserMapMarker(loc) {
+  if (!leafletHospitalMap) return;
+
+  if (leafletUserMarker) {
+    leafletHospitalMap.removeLayer(leafletUserMarker);
+  }
+
+  const userIcon = L.divIcon({
+    className: 'user-gps-div-icon',
+    html: `
+      <div class="user-gps-marker" title="${loc.name}">
+        <div class="user-gps-pulse"></div>
+        <div class="user-gps-dot"></div>
+      </div>
+    `,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+  });
+
+  leafletUserMarker = L.marker([loc.lat, loc.lng], { icon: userIcon, zIndexOffset: 1000 })
+    .addTo(leafletHospitalMap)
+    .bindPopup(`
+      <div style="padding: 10px 14px; font-size: 12px; min-width: 200px;">
+        <strong style="color: #2563eb; display: block; margin-bottom: 4px;">📍 Your Active Location</strong>
+        <span style="color: var(--text-primary); font-weight: 600; display: block;">${loc.name}</span>
+        <span style="font-size: 10.5px; color: var(--text-muted); display: block; margin-top: 3px;">
+          Coordinates: ${loc.lat.toFixed(4)}°N, ${loc.lng.toFixed(4)}°E
+        </span>
+      </div>
+    `);
+}
+
+function updateProximityRadiusCircle(lat, lng) {
+  if (!leafletHospitalMap) return;
+
+  if (leafletProximityCircle) {
+    leafletHospitalMap.removeLayer(leafletProximityCircle);
+    leafletProximityCircle = null;
+  }
+
+  if (activeProximityRadiusKm === 'all' || activeProximityRadiusKm <= 0) return;
+
+  const radiusMeters = activeProximityRadiusKm * 1000;
+  leafletProximityCircle = L.circle([lat, lng], {
+    radius: radiusMeters,
+    color: '#2563eb',
+    fillColor: '#3b82f6',
+    fillOpacity: 0.08,
+    weight: 1.5,
+    dashArray: '5, 5'
+  }).addTo(leafletHospitalMap);
+}
+
+// Recalculate hospital distance from user GPS coordinates
+function recalculateHospitalDistances(userLat, userLng, updateUI = true) {
+  let closestHosp = null;
+  let minDistance = Infinity;
+
+  MOCK_HOSPITALS.forEach(h => {
+    if (typeof h.lat !== 'undefined' && typeof h.lng !== 'undefined') {
+      const dist = calculateHaversineDistance(userLat, userLng, h.lat, h.lng);
+      h.distance = dist;
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestHosp = h;
+      }
+    }
+  });
+
+  const badge = document.getElementById('nearestHospBadge');
+  if (badge && closestHosp) {
+    badge.textContent = `Closest: ${closestHosp.name.split(' ')[0]} (${minDistance} km)`;
+  }
+
+  if (updateUI) {
+    applyHospitalFilters();
+  }
+}
+
+function setProximityRadius(val) {
+  activeProximityRadiusKm = val === 'all' ? 'all' : parseInt(val);
+  updateProximityRadiusCircle(ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng);
+  
+  if (activeProximityRadiusKm === 'all') {
+    showToast('Showing all hospital facilities without radius cutoff', 'info');
+  } else {
+    showToast(`Proximity filter set to ${activeProximityRadiusKm} km radius from your location`, 'info');
+  }
+
+  applyHospitalFilters();
+}
+
+function changeUserLocationPreset(presetKey) {
+  if (presetKey === 'live_gps') {
+    detectLiveDeviceLocation();
+    return;
+  }
+
+  const preset = LOCATION_PRESETS[presetKey];
+  if (!preset) return;
+
+  ACTIVE_USER_LOCATION = { ...preset };
+
+  const labelElem = document.getElementById('activeLocationLabel');
+  if (labelElem) {
+    labelElem.textContent = `${preset.name} (${preset.lat.toFixed(4)}°N, ${preset.lng.toFixed(4)}°E)`;
+  }
+
+  updateUserMapMarker(ACTIVE_USER_LOCATION);
+  updateProximityRadiusCircle(ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng);
+  recalculateHospitalDistances(ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng, true);
+
+  if (leafletHospitalMap) {
+    leafletHospitalMap.flyTo([ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng], 12.5, { duration: 0.8 });
+  }
+
+  showToast(`Location set to ${preset.name}. Hospital distances recalculated!`, 'success');
+}
+
+// Browser HTML5 Geolocation API
+function detectLiveDeviceLocation() {
+  if (!navigator.geolocation) {
+    showToast('Geolocation is not supported by your browser', 'warning');
+    return;
+  }
+
+  showToast('Acquiring real-time GPS coordinates...', 'info');
+
+  navigator.geolocation.getCurrentPosition(
+    position => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      ACTIVE_USER_LOCATION = {
+        lat: lat,
+        lng: lng,
+        name: `Live Device GPS (${lat.toFixed(4)}°, ${lng.toFixed(4)}°)`
+      };
+
+      const labelElem = document.getElementById('activeLocationLabel');
+      if (labelElem) {
+        labelElem.textContent = `Live Device GPS (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
+      }
+
+      updateUserMapMarker(ACTIVE_USER_LOCATION);
+      updateProximityRadiusCircle(lat, lng);
+      recalculateHospitalDistances(lat, lng, true);
+
+      if (leafletHospitalMap) {
+        leafletHospitalMap.flyTo([lat, lng], 13, { duration: 0.8 });
+      }
+
+      showToast('Live device location detected! Distances recalculated.', 'success');
+    },
+    error => {
+      console.warn('Geolocation error:', error.message);
+      showToast('Could not access device GPS (Permission denied or insecure context). Reverting to Hyderabad center.', 'warning');
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+  );
+}
+
+// ── Map API Key Settings Modal Handlers ─────────────────────────────────────
+function openMapConfigModal() {
+  const providerSelect = document.getElementById('mapProviderSelect');
+  const apiKeyInput = document.getElementById('mapApiKeyInput');
+  const styleSelect = document.getElementById('mapStyleSelect');
+
+  if (providerSelect) providerSelect.value = MAP_API_CONFIG.activeProvider;
+  if (apiKeyInput) {
+    apiKeyInput.value = MAP_API_CONFIG.activeProvider === 'mapbox' 
+      ? MAP_API_CONFIG.mapboxToken 
+      : MAP_API_CONFIG.geoapifyKey;
+  }
+  if (styleSelect) styleSelect.value = MAP_API_CONFIG.activeStyle;
+
+  openModal('mapConfigModal');
+}
+
+function handleMapProviderChange() {
+  const provider = document.getElementById('mapProviderSelect')?.value || 'geoapify';
+  const apiKeyInput = document.getElementById('mapApiKeyInput');
+  const styleSelect = document.getElementById('mapStyleSelect');
+
+  if (provider === 'geoapify') {
+    if (apiKeyInput) apiKeyInput.value = MAP_API_CONFIG.geoapifyKey || '6d87e02422f2487295844bb55c4ac443';
+    if (styleSelect) {
+      styleSelect.innerHTML = `
+        <option value="osm-bright-smooth">Geoapify Bright Smooth (Clean Healthcare)</option>
+        <option value="osm-carto">Geoapify OSM Carto (Detailed Streets)</option>
+        <option value="positron">Positron Minimalist Gray</option>
+        <option value="dark-matter">Dark Matter (Night Vision)</option>
+      `;
+    }
+  } else if (provider === 'mapbox') {
+    if (apiKeyInput) apiKeyInput.value = MAP_API_CONFIG.mapboxToken || '';
+    if (styleSelect) {
+      styleSelect.innerHTML = `
+        <option value="streets-v12">Mapbox Streets</option>
+        <option value="outdoors-v12">Mapbox Outdoors</option>
+        <option value="light-v11">Mapbox Light</option>
+        <option value="dark-v11">Mapbox Dark</option>
+        <option value="satellite-streets-v12">Mapbox Satellite with Streets</option>
+      `;
+    }
+  } else {
+    if (apiKeyInput) apiKeyInput.value = 'Public OpenStreetMap CDN (No Key Required)';
+    if (styleSelect) {
+      styleSelect.innerHTML = `
+        <option value="voyager">Carto Voyager (Default)</option>
+        <option value="positron">Carto Positron</option>
+      `;
+    }
+  }
+}
+
+function saveMapApiConfiguration() {
+  const provider = document.getElementById('mapProviderSelect')?.value || 'geoapify';
+  const apiKey = document.getElementById('mapApiKeyInput')?.value.trim() || '';
+  const style = document.getElementById('mapStyleSelect')?.value || 'osm-bright-smooth';
+
+  MAP_API_CONFIG.activeProvider = provider;
+  MAP_API_CONFIG.activeStyle = style;
+
+  if (provider === 'geoapify') {
+    MAP_API_CONFIG.geoapifyKey = apiKey;
+    localStorage.setItem('aarogya_geoapify_key', apiKey);
+  } else if (provider === 'mapbox') {
+    MAP_API_CONFIG.mapboxToken = apiKey;
+    localStorage.setItem('aarogya_mapbox_token', apiKey);
+  }
+
+  localStorage.setItem('aarogya_map_provider', provider);
+  localStorage.setItem('aarogya_map_style', style);
+
+  // Re-apply tile layer
+  if (leafletHospitalMap && leafletTileLayer) {
+    leafletHospitalMap.removeLayer(leafletTileLayer);
+    leafletTileLayer = createTileLayer(provider, apiKey, style);
+    leafletTileLayer.addTo(leafletHospitalMap);
+  }
+
+  const statusText = document.getElementById('mapEngineStatusText');
+  if (statusText) {
+    statusText.innerHTML = `Map API: <strong style="color: var(--green-700);">${provider === 'geoapify' ? 'Geoapify Vector API Key Connected' : provider === 'mapbox' ? 'Mapbox API Token Active' : 'Carto Open CDN Active'}</strong>`;
+  }
+
+  closeModal('mapConfigModal');
+  showToast('Map API Key & style updated successfully!', 'success');
 }
 
 function updateHospitalMapPins(hospitals) {
@@ -730,7 +1022,6 @@ function updateHospitalMapPins(hospitals) {
   leafletMarkersGroup.clearLayers();
   hospitalMarkersById = {};
 
-  // Update badge count in map toolbar
   const badge = document.getElementById('mapVisibleBadge');
   if (badge) {
     badge.textContent = `${hospitals.length} ${hospitals.length === 1 ? 'facility' : 'facilities'}`;
@@ -739,10 +1030,14 @@ function updateHospitalMapPins(hospitals) {
   hospitals.forEach(hosp => {
     if (typeof hosp.lat === 'undefined' || typeof hosp.lng === 'undefined') return;
 
+    // Check proximity filter
+    if (activeProximityRadiusKm !== 'all' && hosp.distance > activeProximityRadiusKm) {
+      return; // outside radius filter
+    }
+
     const isGovt = hosp.type === 'Government';
     const markerTypeClass = isGovt ? 'pin-govt' : 'pin-pvt';
 
-    // SVG Hospital Pin Marker Icon
     const customIcon = L.divIcon({
       className: 'custom-leaflet-icon-wrapper',
       html: `
@@ -762,7 +1057,6 @@ function updateHospitalMapPins(hospitals) {
 
     const marker = L.marker([hosp.lat, hosp.lng], { icon: customIcon });
 
-    // Interactive Rich Healthcare Popup
     const popupHtml = `
       <div class="hospital-popup-card">
         <div class="popup-header">
@@ -771,11 +1065,12 @@ function updateHospitalMapPins(hospitals) {
         </div>
         <div class="popup-meta">
           <span>📍 ${hosp.location}</span>
-          <span>⭐ <strong>${hosp.rating}</strong> / 5.0 (${hosp.reviews.toLocaleString()} reviews) • ${hosp.distance} km away</span>
+          <span>⚡ <strong>${hosp.distance} km away</strong> from your active location</span>
+          <span>⭐ <strong>${hosp.rating}</strong> / 5.0 (${hosp.reviews.toLocaleString()} reviews)</span>
           <span>👨‍⚕️ ${hosp.doctors} Doctors • 🛏️ ${hosp.beds} Beds</span>
         </div>
         <div class="popup-price-row">
-          <span class="popup-price-label">Avg Procedure:</span>
+          <span class="popup-price-label">Avg Procedure Cost:</span>
           <span class="popup-price-val">₹${hosp.estimatedCost.toLocaleString('en-IN')}</span>
         </div>
         <div class="popup-services">
@@ -798,7 +1093,6 @@ function updateHospitalMapPins(hospitals) {
   });
 }
 
-// Focus on a specific hospital pin on the map from grid card
 function focusHospitalOnMap(hospitalId) {
   const hosp = MOCK_HOSPITALS.find(x => x.id === hospitalId);
   if (!hosp || !leafletHospitalMap) return;
@@ -820,11 +1114,10 @@ function focusHospitalOnMap(hospitalId) {
   }
 }
 
-// Locate User on Map
 function locateUserOnMap() {
-  if (!leafletHospitalMap || typeof MOCK_USER_LOCATION === 'undefined') return;
+  if (!leafletHospitalMap) return;
 
-  leafletHospitalMap.flyTo([MOCK_USER_LOCATION.lat, MOCK_USER_LOCATION.lng], 13, {
+  leafletHospitalMap.flyTo([ACTIVE_USER_LOCATION.lat, ACTIVE_USER_LOCATION.lng], 13, {
     duration: 0.8
   });
 
@@ -834,10 +1127,9 @@ function locateUserOnMap() {
     }, 450);
   }
 
-  showToast('Centered map on your current location in Hyderabad', 'info');
+  showToast(`Centered map on ${ACTIVE_USER_LOCATION.name}`, 'info');
 }
 
-// Reset Hospital Map View
 function resetHospitalMapView() {
   if (!leafletHospitalMap) return;
 
@@ -851,7 +1143,6 @@ function resetHospitalMapView() {
   showToast('Map view reset to Hyderabad metro area', 'info');
 }
 
-// Quick filter toolbar on top of map
 function setMapTierFilter(tier, pillBtn) {
   document.querySelectorAll('.map-action-pill').forEach(btn => btn.classList.remove('active'));
   if (pillBtn) pillBtn.classList.add('active');
