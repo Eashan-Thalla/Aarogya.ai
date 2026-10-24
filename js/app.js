@@ -105,6 +105,13 @@ function navigateTo(page) {
     window[`init${capitalize(page)}Page`]();
   }
 
+  // Ensure map tiles render without glitch when switching to hospital finder
+  if (page === 'hospitalFinder' && window.leafletHospitalMap) {
+    setTimeout(() => {
+      window.leafletHospitalMap.invalidateSize();
+    }, 150);
+  }
+
   // Update page title
   const titles = {
     dashboard: 'Dashboard',

@@ -17,6 +17,9 @@
   <!-- Core Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
 
+  <!-- Leaflet CSS for Interactive Geographic Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
   <!-- Chart.js CDN (with built-in offline Canvas fallback) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -691,16 +694,31 @@
             <span class="badge badge-green" id="hospitalResultCount">8 facilities found</span>
           </div>
 
-          <!-- Interactive Hyderabad Geographic Map -->
-          <div class="map-container">
-            <div class="map-overlay-badge">
-              <span class="pulse-dot"></span>
-              <span>Interactive Map: Hyderabad Regional Healthcare Network</span>
+          <!-- Interactive Hyderabad Geographic Map (Leaflet API) -->
+          <div class="map-card-wrapper">
+            <div class="map-toolbar-header">
+              <div class="map-title-hub">
+                <span class="pulse-dot"></span>
+                <span class="map-title-text">Interactive Map: Hyderabad Healthcare & Hospital Network</span>
+                <span class="badge badge-green" id="mapVisibleBadge" style="font-size: 11px;">8 facilities</span>
+              </div>
+              <div class="map-quick-actions">
+                <button type="button" class="map-action-pill active" id="pillAllHospitals" onclick="setMapTierFilter('all', this)">All</button>
+                <button type="button" class="map-action-pill" id="pillGovtHospitals" onclick="setMapTierFilter('Government', this)">Government</button>
+                <button type="button" class="map-action-pill" id="pillPvtHospitals" onclick="setMapTierFilter('Private', this)">Private</button>
+                <button type="button" class="map-action-pill" id="pillAffordableHospitals" onclick="setMapTierFilter('affordable', this)">Affordable (&lt;₹5k)</button>
+                <button type="button" class="map-action-pill pill-locate" onclick="locateUserOnMap()" title="Pan to User Location">
+                  <svg style="width: 13px; height: 13px; vertical-align: -2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  My Location
+                </button>
+                <button type="button" class="map-action-pill" onclick="resetHospitalMapView()" title="Reset Map View">⟲ Fit All</button>
+              </div>
             </div>
-            <canvas id="hyderabadHospitalMap" class="map-canvas-layer"></canvas>
-            <div class="map-controls">
-              <button class="map-btn" onclick="showToast('Zoom In', 'info')" title="Zoom In">+</button>
-              <button class="map-btn" onclick="showToast('Zoom Out', 'info')" title="Zoom Out">−</button>
+            <div id="hyderabadHospitalMap" class="leaflet-hospital-map-container"></div>
+            <div class="map-legend-dock">
+              <div class="legend-chip"><span class="legend-color-dot dot-affordable"></span> Government / Affordable (&lt;₹5,000)</div>
+              <div class="legend-chip"><span class="legend-color-dot dot-private"></span> Private / Multi-Specialty</div>
+              <div class="legend-chip"><span class="legend-color-dot dot-user"></span> Your Location (Begumpet)</div>
             </div>
           </div>
 
@@ -1724,8 +1742,10 @@
 
 
   <!-- ====================================================================
-       APPLICATION SCRIPTS
+       APPLICATION SCRIPTS & MAP API
        ==================================================================== -->
+  <!-- Leaflet JavaScript CDN -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="js/data.js"></script>
   <script src="js/app.js"></script>
   <script src="js/pages.js"></script>

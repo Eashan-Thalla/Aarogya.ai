@@ -557,8 +557,9 @@ function renderHospitalCards(hospitals) {
           ${formatCurrency(h.estimatedCost)} <small>avg procedure</small>
         </div>
         <div class="hospital-card-actions">
-          <button class="btn btn-secondary btn-sm" onclick="showHospitalDetails(${h.id})">View Details</button>
-          <button class="btn btn-outline btn-sm" onclick="getHospitalDirections('${h.name}', '${h.location}')">Get Directions</button>
+          <button class="btn btn-secondary btn-sm" onclick="showHospitalDetails(${h.id})">Details</button>
+          <button class="btn btn-outline btn-sm" onclick="focusHospitalOnMap(${h.id})" title="Locate on Map">📍 Map</button>
+          <button class="btn btn-outline btn-sm" onclick="getHospitalDirections('${h.name}', '${h.location}')">Directions</button>
         </div>
       </div>
     </div>
@@ -637,105 +638,244 @@ function showHospitalDetails(id) {
 }
 
 function getHospitalDirections(name, location) {
-  showToast(`Opening route navigation for ${name} (${location})`, 'info');
+  showToast(`Opening route navigation for ${name}...`, 'info');
+  const query = encodeURIComponent(`${name}, ${location}`);
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${query}`, '_blank');
 }
 
-// Canvas-based interactive stylized map of Hyderabad
+// ── Leaflet Geospatial Interactive Map for Hyderabad Healthcare ─────────────
+let leafletHospitalMap = null;
+let leafletMarkersGroup = null;
+let leafletUserMarker = null;
+let hospitalMarkersById = {};
+
 function renderHospitalMap() {
-  const canvas = document.getElementById('hyderabadHospitalMap');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width = canvas.parentElement.clientWidth || 800;
-  const h = canvas.height = canvas.parentElement.clientHeight || 280;
+  const mapElement = document.getElementById('hyderabadHospitalMap');
+  if (!mapElement) return;
 
-  // Background map texture (grid & stylized roads)
-  ctx.fillStyle = '#f8fafc';
-  ctx.fillRect(0, 0, w, h);
-
-  // Draw grid lines
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < w; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
-  }
-  for (let y = 0; y < h; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
-    ctx.stroke();
+  // Check if Leaflet is loaded
+  if (typeof L === 'undefined') {
+    mapElement.innerHTML = `
+      <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary);">
+        <p style="font-weight: 600; margin-bottom: 6px;">Leaflet Map Library Loading...</p>
+        <p style="font-size: 13px;">If map does not load automatically, please verify your internet connection.</p>
+      </div>
+    `;
+    return;
   }
 
-  // Draw stylized rivers/roads (Hussain Sagar lake & Outer Ring Road)
-  ctx.fillStyle = '#dbeafe';
-  ctx.beginPath();
-  ctx.ellipse(w * 0.52, h * 0.48, 48, 32, 0.4, 0, Math.PI * 2);
-  ctx.fill();
+  // Initialize map if not yet created
+  if (!leafletHospitalMap) {
+    // Center of Hyderabad metro healthcare cluster
+    const defaultCenter = [17.4250, 78.4680];
+    const defaultZoom = 12;
 
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(w * 0.1, h * 0.2);
-  ctx.bezierCurveTo(w * 0.35, h * 0.4, w * 0.65, h * 0.35, w * 0.9, h * 0.7);
-  ctx.stroke();
+    leafletHospitalMap = L.map('hyderabadHospitalMap', {
+      zoomControl: true,
+      scrollWheelZoom: false,
+      attributionControl: false
+    }).setView(defaultCenter, defaultZoom);
 
-  ctx.strokeStyle = '#94a3b8';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(w * 0.5, h * 0.5, h * 0.38, 0, Math.PI * 2);
-  ctx.stroke();
+    // Modern, crisp tile layer (Carto Voyager clean tiles for healthcare data)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd'
+    }).addTo(leafletHospitalMap);
 
-  // Draw hospital pins
+    // Initialize layer group for markers
+    leafletMarkersGroup = L.layerGroup().addTo(leafletHospitalMap);
+
+    // Add user simulated GPS location marker
+    if (typeof MOCK_USER_LOCATION !== 'undefined') {
+      const userIcon = L.divIcon({
+        className: 'user-gps-div-icon',
+        html: `
+          <div class="user-gps-marker" title="${MOCK_USER_LOCATION.name}">
+            <div class="user-gps-pulse"></div>
+            <div class="user-gps-dot"></div>
+          </div>
+        `,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+
+      leafletUserMarker = L.marker([MOCK_USER_LOCATION.lat, MOCK_USER_LOCATION.lng], { icon: userIcon })
+        .addTo(leafletHospitalMap)
+        .bindPopup(`
+          <div style="padding: 10px 14px; font-size: 12px;">
+            <strong style="color: #2563eb; display: block; margin-bottom: 4px;">📍 Your Location</strong>
+            <span style="color: var(--text-secondary);">${MOCK_USER_LOCATION.name}</span>
+          </div>
+        `);
+    }
+
+    // Expose map globally for tab invalidation
+    window.leafletHospitalMap = leafletHospitalMap;
+  }
+
+  // Invalidate size in next animation frame to ensure correct tile rendering inside tabs
+  setTimeout(() => {
+    if (leafletHospitalMap) {
+      leafletHospitalMap.invalidateSize();
+    }
+  }, 120);
+
+  // Render hospital markers
   updateHospitalMapPins(MOCK_HOSPITALS);
 }
 
 function updateHospitalMapPins(hospitals) {
-  const canvas = document.getElementById('hyderabadHospitalMap');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width;
-  const h = canvas.height;
+  if (!leafletHospitalMap || !leafletMarkersGroup) return;
 
-  // Pre-mapped normalized coordinates for Hyderabad hospitals
-  const coords = [
-    { x: 0.48, y: 0.35 }, // Gandhi
-    { x: 0.53, y: 0.65 }, // Osmania
-    { x: 0.42, y: 0.48 }, // NIMS
-    { x: 0.32, y: 0.42 }, // Apollo
-    { x: 0.58, y: 0.30 }, // KIMS
-    { x: 0.44, y: 0.44 }, // Yashoda
-    { x: 0.36, y: 0.52 }, // Care
-    { x: 0.25, y: 0.25 }  // Area Hosp Kukatpally
-  ];
+  leafletMarkersGroup.clearLayers();
+  hospitalMarkersById = {};
 
-  hospitals.forEach((hosp, idx) => {
-    const c = coords[(hosp.id - 1) % coords.length];
-    const px = w * c.x;
-    const py = h * c.y;
+  // Update badge count in map toolbar
+  const badge = document.getElementById('mapVisibleBadge');
+  if (badge) {
+    badge.textContent = `${hospitals.length} ${hospitals.length === 1 ? 'facility' : 'facilities'}`;
+  }
 
-    // Pin circle
-    ctx.fillStyle = hosp.affordable ? '#84CC16' : '#2563eb';
-    ctx.beginPath();
-    ctx.arc(px, py, 9, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
+  hospitals.forEach(hosp => {
+    if (typeof hosp.lat === 'undefined' || typeof hosp.lng === 'undefined') return;
 
-    // Pulse ring
-    ctx.strokeStyle = hosp.affordable ? 'rgba(132, 204, 22, 0.4)' : 'rgba(37, 99, 235, 0.4)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(px, py, 14, 0, Math.PI * 2);
-    ctx.stroke();
+    const isGovt = hosp.type === 'Government';
+    const markerTypeClass = isGovt ? 'pin-govt' : 'pin-pvt';
 
-    // Label
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '600 10px Inter, sans-serif';
-    ctx.fillText(hosp.name.split(' ')[0], px + 12, py + 3);
+    // SVG Hospital Pin Marker Icon
+    const customIcon = L.divIcon({
+      className: 'custom-leaflet-icon-wrapper',
+      html: `
+        <div class="custom-leaflet-marker ${markerTypeClass}" id="marker-hosp-${hosp.id}">
+          <div class="marker-pin-circle">
+            <svg style="width: 17px; height: 17px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v20M2 12h20"/>
+            </svg>
+          </div>
+          <div class="marker-price-tag">₹${hosp.estimatedCost.toLocaleString('en-IN')}</div>
+        </div>
+      `,
+      iconSize: [42, 52],
+      iconAnchor: [21, 50],
+      popupAnchor: [0, -46]
+    });
+
+    const marker = L.marker([hosp.lat, hosp.lng], { icon: customIcon });
+
+    // Interactive Rich Healthcare Popup
+    const popupHtml = `
+      <div class="hospital-popup-card">
+        <div class="popup-header">
+          <div class="popup-name">${hosp.name}</div>
+          <span class="badge ${isGovt ? 'badge-blue' : 'badge-gray'}" style="font-size: 10px; flex-shrink: 0;">${hosp.type}</span>
+        </div>
+        <div class="popup-meta">
+          <span>📍 ${hosp.location}</span>
+          <span>⭐ <strong>${hosp.rating}</strong> / 5.0 (${hosp.reviews.toLocaleString()} reviews) • ${hosp.distance} km away</span>
+          <span>👨‍⚕️ ${hosp.doctors} Doctors • 🛏️ ${hosp.beds} Beds</span>
+        </div>
+        <div class="popup-price-row">
+          <span class="popup-price-label">Avg Procedure:</span>
+          <span class="popup-price-val">₹${hosp.estimatedCost.toLocaleString('en-IN')}</span>
+        </div>
+        <div class="popup-services">
+          ${hosp.services.slice(0, 3).map(s => `<span class="badge badge-gray" style="font-size: 10px;">${s}</span>`).join('')}
+        </div>
+        <div class="popup-actions-row">
+          <button class="btn btn-primary btn-sm" onclick="showHospitalDetails(${hosp.id})">Details</button>
+          <button class="btn btn-outline btn-sm" onclick="getHospitalDirections('${hosp.name}', '${hosp.location}')">Directions</button>
+        </div>
+      </div>
+    `;
+
+    marker.bindPopup(popupHtml, {
+      maxWidth: 320,
+      minWidth: 260
+    });
+
+    marker.addTo(leafletMarkersGroup);
+    hospitalMarkersById[hosp.id] = marker;
   });
+}
+
+// Focus on a specific hospital pin on the map from grid card
+function focusHospitalOnMap(hospitalId) {
+  const hosp = MOCK_HOSPITALS.find(x => x.id === hospitalId);
+  if (!hosp || !leafletHospitalMap) return;
+
+  const mapWrapper = document.querySelector('.map-card-wrapper');
+  if (mapWrapper) {
+    mapWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  leafletHospitalMap.flyTo([hosp.lat, hosp.lng], 14, {
+    duration: 0.8
+  });
+
+  const marker = hospitalMarkersById[hospitalId];
+  if (marker) {
+    setTimeout(() => {
+      marker.openPopup();
+    }, 450);
+  }
+}
+
+// Locate User on Map
+function locateUserOnMap() {
+  if (!leafletHospitalMap || typeof MOCK_USER_LOCATION === 'undefined') return;
+
+  leafletHospitalMap.flyTo([MOCK_USER_LOCATION.lat, MOCK_USER_LOCATION.lng], 13, {
+    duration: 0.8
+  });
+
+  if (leafletUserMarker) {
+    setTimeout(() => {
+      leafletUserMarker.openPopup();
+    }, 450);
+  }
+
+  showToast('Centered map on your current location in Hyderabad', 'info');
+}
+
+// Reset Hospital Map View
+function resetHospitalMapView() {
+  if (!leafletHospitalMap) return;
+
+  leafletHospitalMap.flyTo([17.4250, 78.4680], 12, { duration: 0.8 });
+  resetHospitalFilters();
+
+  document.querySelectorAll('.map-action-pill').forEach(btn => btn.classList.remove('active'));
+  const allBtn = document.getElementById('pillAllHospitals');
+  if (allBtn) allBtn.classList.add('active');
+
+  showToast('Map view reset to Hyderabad metro area', 'info');
+}
+
+// Quick filter toolbar on top of map
+function setMapTierFilter(tier, pillBtn) {
+  document.querySelectorAll('.map-action-pill').forEach(btn => btn.classList.remove('active'));
+  if (pillBtn) pillBtn.classList.add('active');
+
+  const typeFilter = document.getElementById('hospitalTypeFilter');
+  const budgetSlider = document.getElementById('hospitalBudgetSlider');
+
+  if (tier === 'affordable') {
+    if (typeFilter) typeFilter.value = 'all';
+    if (budgetSlider) {
+      budgetSlider.value = 5000;
+      handleHospitalBudgetInput(5000);
+    }
+  } else {
+    if (typeFilter) {
+      typeFilter.value = tier;
+    }
+    if (budgetSlider) {
+      budgetSlider.value = 25000;
+      handleHospitalBudgetInput(25000);
+    }
+  }
+
+  applyHospitalFilters();
 }
 
 // ============================================================================

@@ -22,12 +22,20 @@ const MOCK_USER = {
   }
 };
 
+const MOCK_USER_LOCATION = {
+  lat: 17.4125,
+  lng: 78.4682,
+  name: 'Current Location (Begumpet, Hyderabad)'
+};
+
 const MOCK_HOSPITALS = [
   {
     id: 1,
     name: 'Gandhi Hospital',
     type: 'Government',
     location: 'Musheerabad, Hyderabad',
+    lat: 17.4243,
+    lng: 78.5033,
     distance: 3.2,
     rating: 4.1,
     reviews: 2850,
@@ -44,6 +52,8 @@ const MOCK_HOSPITALS = [
     name: 'Osmania General Hospital',
     type: 'Government',
     location: 'Afzalgunj, Hyderabad',
+    lat: 17.3776,
+    lng: 78.4776,
     distance: 5.1,
     rating: 4.0,
     reviews: 3200,
@@ -60,6 +70,8 @@ const MOCK_HOSPITALS = [
     name: 'NIMS Hospital',
     type: 'Government',
     location: 'Punjagutta, Hyderabad',
+    lat: 17.4222,
+    lng: 78.4528,
     distance: 4.5,
     rating: 4.3,
     reviews: 4100,
@@ -76,6 +88,8 @@ const MOCK_HOSPITALS = [
     name: 'Apollo Hospitals',
     type: 'Private',
     location: 'Jubilee Hills, Hyderabad',
+    lat: 17.4259,
+    lng: 78.4111,
     distance: 7.8,
     rating: 4.7,
     reviews: 5600,
@@ -92,6 +106,8 @@ const MOCK_HOSPITALS = [
     name: 'KIMS Hospitals',
     type: 'Private',
     location: 'Secunderabad, Hyderabad',
+    lat: 17.4399,
+    lng: 78.4983,
     distance: 6.2,
     rating: 4.5,
     reviews: 3900,
@@ -108,6 +124,8 @@ const MOCK_HOSPITALS = [
     name: 'Yashoda Hospitals',
     type: 'Private',
     location: 'Somajiguda, Hyderabad',
+    lat: 17.4249,
+    lng: 78.4583,
     distance: 5.5,
     rating: 4.4,
     reviews: 4200,
@@ -124,6 +142,8 @@ const MOCK_HOSPITALS = [
     name: 'Care Hospitals',
     type: 'Private',
     location: 'Banjara Hills, Hyderabad',
+    lat: 17.4156,
+    lng: 78.4487,
     distance: 8.1,
     rating: 4.6,
     reviews: 3100,
@@ -140,6 +160,8 @@ const MOCK_HOSPITALS = [
     name: 'Area Hospital Kukatpally',
     type: 'Government',
     location: 'Kukatpally, Hyderabad',
+    lat: 17.4849,
+    lng: 78.4011,
     distance: 2.5,
     rating: 3.8,
     reviews: 1800,
