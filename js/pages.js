@@ -1741,14 +1741,39 @@ function saveUserProfile(e) {
   if (e) e.preventDefault();
   MOCK_USER.name = document.getElementById('profName').value;
   MOCK_USER.email = document.getElementById('profEmail').value;
-  MOCK_USER.age = parseInt(document.getElementById('profAge').value);
+  MOCK_USER.age = parseInt(document.getElementById('profAge').value) || MOCK_USER.age;
+  MOCK_USER.gender = document.getElementById('profGender')?.value || MOCK_USER.gender;
   MOCK_USER.city = document.getElementById('profCity').value;
+  MOCK_USER.state = document.getElementById('profState')?.value || MOCK_USER.state;
+  MOCK_USER.phone = document.getElementById('profPhone')?.value || MOCK_USER.phone;
+  MOCK_USER.bloodGroup = document.getElementById('profBlood')?.value || MOCK_USER.bloodGroup;
+
+  if (document.getElementById('profInsProvider')) {
+    MOCK_USER.insurance = {
+      provider: document.getElementById('profInsProvider').value,
+      policyName: document.getElementById('profInsPolicy')?.value || '',
+      coverageAmount: parseInt(document.getElementById('profInsCoverage')?.value) || 0,
+      deductible: parseInt(document.getElementById('profInsDeductible')?.value) || 0,
+      coPayment: parseInt(document.getElementById('profInsCopay')?.value) || 0
+    };
+  }
 
   // Update header display
   const greetEl = document.getElementById('headerGreeting');
   if (greetEl) greetEl.textContent = `Hello, ${MOCK_USER.name}`;
 
-  showToast('Profile and preferences updated successfully!', 'success');
+  // Persist to MongoDB Atlas
+  if (window.AarogyaAPI && AarogyaAPI.saveUserProfile) {
+    AarogyaAPI.saveUserProfile(MOCK_USER).then(res => {
+      if (res && res.mode === 'mongodb') {
+        showToast('Profile synced & saved to MongoDB Atlas!', 'success');
+      } else {
+        showToast('Profile updated locally.', 'success');
+      }
+    });
+  } else {
+    showToast('Profile and preferences updated successfully!', 'success');
+  }
 }
 
 // ============================================================================
