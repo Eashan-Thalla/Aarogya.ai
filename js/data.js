@@ -23,10 +23,11 @@ const MOCK_USER = {
 };
 
 const MAP_API_CONFIG = {
+  osmApiKey: localStorage.getItem('aarogya_osm_key') || 'pk.a106967733f373ec3a8711e61bb22f87',
   geoapifyKey: localStorage.getItem('aarogya_geoapify_key') || '6d87e02422f2487295844bb55c4ac443',
   mapboxToken: localStorage.getItem('aarogya_mapbox_token') || '',
-  activeProvider: localStorage.getItem('aarogya_map_provider') || 'geoapify',
-  activeStyle: localStorage.getItem('aarogya_map_style') || 'osm-bright-smooth'
+  activeProvider: localStorage.getItem('aarogya_map_provider') || 'openstreetmap',
+  activeStyle: localStorage.getItem('aarogya_map_style') || 'streets'
 };
 
 const LOCATION_PRESETS = {

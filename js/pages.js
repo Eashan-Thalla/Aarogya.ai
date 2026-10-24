@@ -668,7 +668,19 @@ function createTileLayer(provider, apiKey, style) {
   let url = '';
   let attribution = '';
 
-  if (provider === 'geoapify' && apiKey) {
+  if (provider === 'openstreetmap' && apiKey) {
+    // OpenStreetMap via LocationIQ raster/vector tile API
+    const isRetina = (typeof L !== 'undefined' && L.Browser && L.Browser.retina);
+    const styleName = style === 'dark' ? 'dark' : 'streets';
+    url = isRetina
+      ? `https://{s}-tiles.locationiq.com/v3/${styleName}/r/{z}/{x}/{y}@2x.png?key=${apiKey}`
+      : `https://{s}-tiles.locationiq.com/v3/${styleName}/r/{z}/{x}/{y}.png?key=${apiKey}`;
+    attribution = '© <a href="https://locationiq.com/" target="_blank">LocationIQ</a> | © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
+  } else if (provider === 'osm_standard') {
+    // Official OpenStreetMap standard tile server
+    url = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    attribution = '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
+  } else if (provider === 'geoapify' && apiKey) {
     const isRetina = (typeof L !== 'undefined' && L.Browser && L.Browser.retina);
     url = isRetina
       ? `https://maps.geoapify.com/v1/tile/${style}/{z}/{x}/{y}@2x.png?apiKey=${apiKey}`
@@ -678,27 +690,27 @@ function createTileLayer(provider, apiKey, style) {
     url = `https://api.mapbox.com/styles/v1/mapbox/${style}/tiles/{z}/{x}/{y}?access_token=${apiKey}`;
     attribution = '© <a href="https://www.mapbox.com/">Mapbox</a> | © OpenStreetMap';
   } else {
-    // High-performance public CDN fallback (Carto Voyager)
-    url = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-    attribution = '© <a href="https://carto.com/">CARTO</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+    // Official OpenStreetMap default
+    url = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    attribution = '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
   }
 
   const layer = L.tileLayer(url, {
     maxZoom: 19,
-    subdomains: 'abcd',
+    subdomains: ['a', 'b', 'c'],
     attribution: attribution
   });
 
-  // Gracefully fallback to Carto tiles if custom API key experiences a 401/403 or network error
+  // Gracefully fallback to official OpenStreetMap tiles if custom API key encounters a 401/403 or network error
   layer.on('tileerror', function() {
-    if (provider !== 'osm' && !layer._hasFallenBack) {
+    if (!layer._hasFallenBack) {
       layer._hasFallenBack = true;
-      console.warn('Map API key tile request error. Falling back to Carto Voyager tiles.');
+      console.warn('Map API key tile request failed. Falling back to OpenStreetMap standard tiles.');
       if (leafletHospitalMap && leafletHospitalMap.hasLayer(layer)) {
         leafletHospitalMap.removeLayer(layer);
-        const fallback = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        const fallback = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
-          subdomains: 'abcd'
+          attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
         });
         fallback.addTo(leafletHospitalMap);
         leafletTileLayer = fallback;
@@ -736,10 +748,16 @@ function renderHospitalMap() {
       attributionControl: false
     }).setView(defaultCenter, defaultZoom);
 
-    // Load active API Key tile layer
+    // Load active OpenStreetMap API Key tile layer
+    const activeKey = MAP_API_CONFIG.activeProvider === 'mapbox' 
+      ? MAP_API_CONFIG.mapboxToken 
+      : MAP_API_CONFIG.activeProvider === 'geoapify'
+      ? MAP_API_CONFIG.geoapifyKey
+      : MAP_API_CONFIG.osmApiKey;
+
     leafletTileLayer = createTileLayer(
       MAP_API_CONFIG.activeProvider,
-      MAP_API_CONFIG.geoapifyKey,
+      activeKey,
       MAP_API_CONFIG.activeStyle
     );
     leafletTileLayer.addTo(leafletHospitalMap);
@@ -935,9 +953,15 @@ function openMapConfigModal() {
 
   if (providerSelect) providerSelect.value = MAP_API_CONFIG.activeProvider;
   if (apiKeyInput) {
-    apiKeyInput.value = MAP_API_CONFIG.activeProvider === 'mapbox' 
-      ? MAP_API_CONFIG.mapboxToken 
-      : MAP_API_CONFIG.geoapifyKey;
+    if (MAP_API_CONFIG.activeProvider === 'mapbox') {
+      apiKeyInput.value = MAP_API_CONFIG.mapboxToken;
+    } else if (MAP_API_CONFIG.activeProvider === 'geoapify') {
+      apiKeyInput.value = MAP_API_CONFIG.geoapifyKey;
+    } else if (MAP_API_CONFIG.activeProvider === 'osm_standard') {
+      apiKeyInput.value = 'OpenStreetMap Standard CDN (Direct OSM Server)';
+    } else {
+      apiKeyInput.value = MAP_API_CONFIG.osmApiKey || 'pk.a106967733f373ec3a8711e61bb22f87';
+    }
   }
   if (styleSelect) styleSelect.value = MAP_API_CONFIG.activeStyle;
 
@@ -945,15 +969,23 @@ function openMapConfigModal() {
 }
 
 function handleMapProviderChange() {
-  const provider = document.getElementById('mapProviderSelect')?.value || 'geoapify';
+  const provider = document.getElementById('mapProviderSelect')?.value || 'openstreetmap';
   const apiKeyInput = document.getElementById('mapApiKeyInput');
   const styleSelect = document.getElementById('mapStyleSelect');
 
-  if (provider === 'geoapify') {
+  if (provider === 'openstreetmap') {
+    if (apiKeyInput) apiKeyInput.value = MAP_API_CONFIG.osmApiKey || 'pk.a106967733f373ec3a8711e61bb22f87';
+    if (styleSelect) {
+      styleSelect.innerHTML = `
+        <option value="streets">OpenStreetMap Streets (Standard Healthcare)</option>
+        <option value="dark">OpenStreetMap Dark (Night Mode)</option>
+      `;
+    }
+  } else if (provider === 'geoapify') {
     if (apiKeyInput) apiKeyInput.value = MAP_API_CONFIG.geoapifyKey || '6d87e02422f2487295844bb55c4ac443';
     if (styleSelect) {
       styleSelect.innerHTML = `
-        <option value="osm-bright-smooth">Geoapify Bright Smooth (Clean Healthcare)</option>
+        <option value="osm-bright-smooth">Geoapify OSM Bright Smooth</option>
         <option value="osm-carto">Geoapify OSM Carto (Detailed Streets)</option>
         <option value="positron">Positron Minimalist Gray</option>
         <option value="dark-matter">Dark Matter (Night Vision)</option>
@@ -971,25 +1003,27 @@ function handleMapProviderChange() {
       `;
     }
   } else {
-    if (apiKeyInput) apiKeyInput.value = 'Public OpenStreetMap CDN (No Key Required)';
+    if (apiKeyInput) apiKeyInput.value = 'Public OpenStreetMap CDN (Direct Server)';
     if (styleSelect) {
       styleSelect.innerHTML = `
-        <option value="voyager">Carto Voyager (Default)</option>
-        <option value="positron">Carto Positron</option>
+        <option value="standard">OpenStreetMap Standard</option>
       `;
     }
   }
 }
 
 function saveMapApiConfiguration() {
-  const provider = document.getElementById('mapProviderSelect')?.value || 'geoapify';
+  const provider = document.getElementById('mapProviderSelect')?.value || 'openstreetmap';
   const apiKey = document.getElementById('mapApiKeyInput')?.value.trim() || '';
-  const style = document.getElementById('mapStyleSelect')?.value || 'osm-bright-smooth';
+  const style = document.getElementById('mapStyleSelect')?.value || 'streets';
 
   MAP_API_CONFIG.activeProvider = provider;
   MAP_API_CONFIG.activeStyle = style;
 
-  if (provider === 'geoapify') {
+  if (provider === 'openstreetmap') {
+    MAP_API_CONFIG.osmApiKey = apiKey;
+    localStorage.setItem('aarogya_osm_key', apiKey);
+  } else if (provider === 'geoapify') {
     MAP_API_CONFIG.geoapifyKey = apiKey;
     localStorage.setItem('aarogya_geoapify_key', apiKey);
   } else if (provider === 'mapbox') {
@@ -1003,17 +1037,22 @@ function saveMapApiConfiguration() {
   // Re-apply tile layer
   if (leafletHospitalMap && leafletTileLayer) {
     leafletHospitalMap.removeLayer(leafletTileLayer);
-    leafletTileLayer = createTileLayer(provider, apiKey, style);
+    const activeKey = provider === 'mapbox' 
+      ? MAP_API_CONFIG.mapboxToken 
+      : provider === 'geoapify' 
+      ? MAP_API_CONFIG.geoapifyKey 
+      : MAP_API_CONFIG.osmApiKey;
+    leafletTileLayer = createTileLayer(provider, activeKey, style);
     leafletTileLayer.addTo(leafletHospitalMap);
   }
 
   const statusText = document.getElementById('mapEngineStatusText');
   if (statusText) {
-    statusText.innerHTML = `Map API: <strong style="color: var(--green-700);">${provider === 'geoapify' ? 'Geoapify Vector API Key Connected' : provider === 'mapbox' ? 'Mapbox API Token Active' : 'Carto Open CDN Active'}</strong>`;
+    statusText.innerHTML = `Map API: <strong style="color: var(--green-700);">${provider === 'openstreetmap' ? 'OpenStreetMap (OSM) Key Connected' : provider === 'geoapify' ? 'Geoapify OSM Key Connected' : provider === 'mapbox' ? 'Mapbox API Token Active' : 'OpenStreetMap Standard Active'}</strong>`;
   }
 
   closeModal('mapConfigModal');
-  showToast('Map API Key & style updated successfully!', 'success');
+  showToast('OpenStreetMap API Key & style updated successfully!', 'success');
 }
 
 function updateHospitalMapPins(hospitals) {

@@ -694,15 +694,15 @@
             <span class="badge badge-green" id="hospitalResultCount">8 facilities found</span>
           </div>
 
-          <!-- Interactive Hyderabad Geographic Map (Location-Based API) -->
+          <!-- Interactive Hyderabad Geographic Map (OpenStreetMap API) -->
           <div class="map-card-wrapper">
             <div class="map-toolbar-header">
               <div class="map-title-hub">
                 <span class="pulse-dot"></span>
-                <span class="map-title-text">Location-Based Healthcare Network</span>
+                <span class="map-title-text">OpenStreetMap Healthcare Network</span>
                 <span class="badge badge-green" id="mapVisibleBadge" style="font-size: 11px;">8 facilities</span>
-                <span class="badge badge-gray" id="mapApiBadge" style="font-size: 10.5px; cursor: pointer;" onclick="openMapConfigModal()" title="Click to view/change Map API Key">
-                  🔑 API Key: Active
+                <span class="badge badge-green" id="mapApiBadge" style="font-size: 10.5px; cursor: pointer;" onclick="openMapConfigModal()" title="Click to view/change OpenStreetMap API Key">
+                  🔑 OSM API Key: Active
                 </span>
               </div>
               <div class="map-quick-actions">
@@ -728,8 +728,8 @@
                   Detect GPS
                 </button>
 
-                <button type="button" class="map-action-pill pill-api-key" onclick="openMapConfigModal()" title="View or configure Map API Key & Tile Provider">
-                  🔑 API Key
+                <button type="button" class="map-action-pill pill-api-key" onclick="openMapConfigModal()" title="View or configure OpenStreetMap API Key">
+                  🔑 OSM Key
                 </button>
                 <button type="button" class="map-action-pill" onclick="resetHospitalMapView()" title="Reset Map View">⟲ Fit All</button>
               </div>
@@ -760,7 +760,7 @@
               <div class="legend-chip"><span class="legend-color-dot dot-user"></span> Your Active Location (Live Radar)</div>
               <div class="legend-chip" style="margin-left: auto;">
                 <span id="mapEngineStatusText" style="font-size: 11px; color: var(--text-muted); cursor: pointer;" onclick="openMapConfigModal()">
-                  Map API: <strong style="color: var(--green-700);">Geoapify Vector API Key Connected</strong>
+                  Map API: <strong style="color: var(--green-700);">OpenStreetMap (OSM) Key Connected</strong>
                 </span>
               </div>
             </div>
@@ -1807,30 +1807,31 @@
         <div class="form-group" style="margin-bottom: 16px;">
           <label class="form-label" for="mapProviderSelect">Map Tile Provider</label>
           <select id="mapProviderSelect" class="form-select" onchange="handleMapProviderChange()">
-            <option value="geoapify">Geoapify Maps API (Default with Active Key)</option>
+            <option value="openstreetmap">OpenStreetMap API (LocationIQ OSM Key)</option>
+            <option value="geoapify">OpenStreetMap via Geoapify OSM-Carto Key</option>
+            <option value="osm_standard">OpenStreetMap Standard (Direct OSM Server)</option>
             <option value="mapbox">Mapbox GL Tiles (Custom Access Token)</option>
-            <option value="osm">Carto Voyager / OpenStreetMap (Public CDN Fallback)</option>
           </select>
         </div>
 
         <div class="form-group" style="margin-bottom: 16px;">
           <label class="form-label" for="mapApiKeyInput">
-            Map API Key / Access Token
+            OpenStreetMap API Key / Access Token
             <span id="apiKeyStatusBadge" class="badge badge-green" style="font-size: 10px; margin-left: 8px;">Active &amp; Verified</span>
           </label>
-          <input type="text" id="mapApiKeyInput" class="form-input" placeholder="Enter API Key (e.g. 6d87e02422f2487295844bb55c4ac443)">
+          <input type="text" id="mapApiKeyInput" class="form-input" placeholder="Enter OpenStreetMap API Key (e.g. pk.a106967733f373ec3a8711e61bb22f87)">
           <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">
-            Active key: <code>6d87e02422f2487295844bb55c4ac443</code> (Geoapify Free Tier). You can paste your own anytime.
+            Active OSM Key: <code>pk.a106967733f373ec3a8711e61bb22f87</code> (LocationIQ OpenStreetMap Service). You can enter your own anytime.
           </span>
         </div>
 
         <div class="form-group" style="margin-bottom: 20px;">
           <label class="form-label" for="mapStyleSelect">Map Aesthetic Theme</label>
           <select id="mapStyleSelect" class="form-select">
-            <option value="osm-bright-smooth">Geoapify Bright Smooth (Clean Healthcare)</option>
-            <option value="osm-carto">Geoapify OSM Carto (Detailed Streets)</option>
-            <option value="positron">Positron Minimalist Gray</option>
-            <option value="dark-matter">Dark Matter (Night Vision)</option>
+            <option value="streets">OpenStreetMap Streets (Standard Healthcare)</option>
+            <option value="dark">OpenStreetMap Dark (Night Mode)</option>
+            <option value="osm-bright-smooth">Geoapify OSM Bright</option>
+            <option value="positron">Carto Positron Minimal</option>
           </select>
         </div>
 
